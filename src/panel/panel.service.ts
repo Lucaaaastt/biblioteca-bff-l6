@@ -75,22 +75,25 @@ export class PanelService {
     return { total: mios.length, prestamos: this.unir(mios, libros) };
   }
 
-  private async enviar<T>(metodo: string, url: string, cuerpo?: unknown): Promise<T> {
-    let respuesta: Response;
-    try {
-      respuesta = await fetch(url, {
-        method: metodo,
-        headers: cuerpo ? { 'Content-Type': 'application/json' } : {},
-        body: cuerpo ? JSON.stringify(cuerpo) : undefined,
-      });
-    } catch {
-      throw new ServiceUnavailableException('el microservicio de prestamos no responde');
+  private async enviar<T>(metodo: string, url: string, token: string, cuerpo?: unknown): Promise<T> {
+      let respuesta: Response;
+      try {
+        respuesta = await fetch(url, {
+          method: metodo,
+          headers: {
+            ...(cuerpo ? { 'Content-Type': 'application/json' } : {}),
+            Authorization: token,          // el mismo Bearer que llego al BFF
+          },
+          body: cuerpo ? JSON.stringify(cuerpo) : undefined,
+        });
+      } catch {
+        throw new ServiceUnavailableException('el microservicio de prestamos no responde');
+      }
+      if (!respuesta.ok) {
+        throw new ServiceUnavailableException(`el microservicio de prestamos devolvio ${respuesta.status}`);
+      }
+      return (await respuesta.json()) as T;
     }
-    if (!respuesta.ok) {
-      throw new ServiceUnavailableException(`el microservicio de prestamos devolvio ${respuesta.status}`);
-    }
-    return (await respuesta.json()) as T;
-  }
 
   async prestar(sub: string, libroId: unknown): Promise<Prestamo> {
     // 1 · Lo que viene del cliente no es de fiar hasta que lo revisas.
@@ -111,7 +114,7 @@ export class PanelService {
 
     const hoy = new Date();
     const dia = (n: number) => new Date(hoy.getTime() + n * 86400000).toISOString().slice(0, 10);
-    return this.enviar<Prestamo>('POST', this.prestamosUrl, {
+    return this.enviar<Prestamo>('POST', this.prestamosUrl, token, {
       libroId,
       usuarioSub: sub,          // sale del TOKEN, no del cuerpo de la peticion
       desde: dia(0),
@@ -130,6 +133,6 @@ export class PanelService {
     }
     if (prestamo.devuelto) throw new ConflictException(`el prestamo ${id} ya estaba devuelto`);
 
-    return this.enviar<Prestamo>('DELETE', `${this.prestamosUrl}/${id}`);
+    return this.enviar<Prestamo>('DELETE', `${this.prestamosUrl}/${id}`, token);
   }
 }
